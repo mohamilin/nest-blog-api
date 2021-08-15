@@ -6,7 +6,7 @@
 [circleci-url]: https://circleci.com/gh/nestjs/nest
 
   <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-<p align="center">Project Belajar Pertama dengan menggunakan nestjs. Saya akan membuat sebuah blog api. Semoga dapat menjadi refrensi bersama.</p>
+<p align="center">Project Belajar  dengan menggunakan nestjs. Project berupa sebuah blog api. Semoga dapat menjadi refrensi bersama.</p>
 
 ## Description
 
@@ -56,7 +56,7 @@ $ npm run test:cov
 4. Selanjutnya, Buat folder  <strong>core</strong> di dalam src dan buat module database :
     - nest generate module database
 
-###### Setting Interface Database
+##### Setting Interface Database
 5. Buat folder <strong>interface</strong> didalam src > core > database
     - Didalamnya buat lagi file dengan nama <strong>dbConfig.interface.ts</strong>
      - Code :
@@ -77,7 +77,7 @@ $ npm run test:cov
         production: IDatabaseConfigAttributes;
       }
       ```
-###### Set Konfigurasi Database
+##### Set Konfigurasi Database
 6. Buat file <strong>database.config.ts</strong> di dalam src > core > database
    - Code
     ```ts
@@ -144,7 +144,7 @@ $ npm run test:cov
        export class AppModule {}
         ```
 
-###### Set Provider untuk Database
+##### Set Provider untuk Database
 9.  Buat file <strong>database.provider.ts</strong>. didalam file ini agar database dapat berjalan dengan berbagai kondisi : dev, test, dan production
     - code :
     ```ts
@@ -197,8 +197,158 @@ $ npm run test:cov
     export class DatabaseModule {}
     ```
      
+#### Setting Endpoint
+1. Kita akan buat sebuah endpoint <strong>api/v1</strong>. Tujuan diberikan v1 agar jika kedepannya terdapat pembaharuan versi. Bisa menjadi v2, v3, atau seterusnya.
+2. Setting global endpoint dpt dilakukan dalam file src > main.ts
+    - Code :
+    ```ts
+    ....... 
+    // kode sebelumnya
+     // set api/v1
+    app.setGlobalPrefix('api/v1');
+    ......
+     // kode setelahnya
+    ```
+3. Selanjutnya, kita butuh module yang dapat menampung model-model yang digunakan. Buat folder <strong>modules</strong> didalam src. Masuk ke folder ini dan buat module dan service untuk users
+    - Perintah : nest generate module users dan nest generate service users
+    - Hasil : didalam folder src > modules > users akan ada 3 file yaitu : users.module.ts, users.service.spec.ts, dan users.service.ts
 
+##### Setup schema untuk database dan model users
+1. Masih didalam src > modules > users. Buat file <strong>user.entity.ts</strong>, file ini berisi dari kolom-kolom tabel users
+   - code :
+   ```ts
+    import { Table, Column, Model, DataType } from 'sequelize-typescript';
+    @Table
+    export class User extends Model<User> {
+      @Column({
+        type: DataType.STRING,
+        allowNull: false,
+      })
+      name: string;
 
+      @Column({
+        type: DataType.STRING,
+        unique: true,
+        allowNull: false,
+      })
+      email: string;
+
+      @Column({
+        type: DataType.STRING,
+        allowNull: false,
+      })
+      password: string;
+
+      @Column({
+        type: DataType.ENUM,
+        values: ['male', 'female'],
+        allowNull: false,
+      })
+      gender: string;
+    }
+    ```
+  - Untuk refrensi bisa klik link ini : [Referensi](https://github.com/RobinBuschmann/sequelize-typescript#readme) \
+
+2. Didalam folder users kita juga butuh data tansfer object (dto), kita bisa buat folder dto dengan file berisikan user.dto.ts.
+  - code :
+  ```ts
+  export class UserDto {
+    readonly name: string;
+    readonly email: string;
+    readonly password: string;
+    readonly gender: string;
+  }
+
+  ```
+3. nah, untuk komunikasi dengan database kita buat lagi provider untuk user. Masih di dalam folder userss, buat file users.providers.ts
+    - code :
+    ```ts
+    import { User } from './users.entity';
+    import { USER_REPOSITORY } from '../../core/constants';
+
+    export const usersProviders = [
+      {
+        provide: USER_REPOSITORY,
+        useValue: User,
+      },
+    ];
+    
+    //dan tambahkan code berupa : export const USER_REPOSITORY = 'USER_REPOSITORY' pada file constants > index.ts
+    ```
+4. Selanjutnya, kita perlu utk import users service dan providers ke dalam users.module.ts
+   - code :
+   ```ts
+    import { Module } from '@nestjs/common';
+    import { usersProviders } from './users.provider';
+    import { UsersService } from './users.service';
+    @Module({
+      providers: [UsersService, ...usersProviders],
+      exports: [UsersService],
+    })
+    export class UsersModule {}
+   ``` 
+5. Mari kita lakukan operasi CRUD di dalam file users.service.ts
+   - code :
+   ```ts
+   import { Injectable, Inject } from '@nestjs/common';
+  import { User } from './user.entity';
+  import { UserDto } from './dto/user.dto';
+  import { USER_REPOSITORY } from '../../core/constants';
+
+  @Injectable()
+  export class UsersService {
+    constructor(
+      @Inject(USER_REPOSITORY) private readonly userRepository: typeof User,
+    ) {}
+
+    async create(user: UserDto): Promise<User> {
+      return await this.userRepository.create<User>(user);
+    }
+
+    async findOneByEmail(email: string): Promise<User> {
+      return await this.userRepository.findOne<User>({ where: { email } });
+    }
+
+    async findOneById(id: number): Promise<User> {
+      return await this.userRepository.findOne<User>({ where: { id } });
+    }
+  }
+   ```  
+6. Kemudian, dalam database.provider.ts kita import model <strong>User</strong> 
+   - Code updatenya :
+   ```ts
+    import { Sequelize } from 'sequelize-typescript';
+    import { User } from 'src/modules/users/user.entity';
+    import { SEQUELIZE, DEVELOPMENT, TEST, PRODUCTION } from '../constants';
+    import { databaseConfig } from './database.config';
+
+    export const databaseProviders = [
+      {
+        provide: SEQUELIZE,
+        useFactory: async () => {
+          let config;
+          switch (process.env.NODE_ENV) {
+            case DEVELOPMENT:
+              config = databaseConfig.development;
+              break;
+            case TEST:
+              config = databaseConfig.test;
+              break;
+            case PRODUCTION:
+              config = databaseConfig.production;
+              break;
+            default:
+              config = databaseConfig.development;
+          }
+          const sequelize = new Sequelize(config);
+          sequelize.addModels([User]);
+          await sequelize.sync();
+          return sequelize;
+        },
+      },
+    ];
+  ```  
+7. 
   
 ## Support
 
